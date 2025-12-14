@@ -185,7 +185,7 @@ plt.boxplot(boxplot, labels=cr)
 plt.title('Стандатизированный Boxplot для просмотра выбрасов')
 plt.tight_layout()
 plt.show()
-
+'''
 
 
 # Столкнулся с проблемой accuracy 1.0. Понял, что у Hit это те же признаки, что и в модели обучения
@@ -206,7 +206,7 @@ y_pred_dt = dt.predict(X_test)
 y_pred_knn = knn.predict(X_test)
 y_pred_logreg = logreg.predict(X_test)
 
-
+'''
 cm = confusion_matrix(y_test, y_pred_logreg)
 disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=np.unique(y_test))
 disp.plot(cmap=plt.cm.Blues)
@@ -228,6 +228,7 @@ print("Accuracy for logreg:", accuracy_logreg)
 
 print(confusion_matrix(y_test, y_pred_logreg))
 print(classification_report(y_test, y_pred_logreg))
+'''
 '''
 def regression_metrics(y_true, y_pred):  
     mae = mean_absolute_error(y_true, y_pred)  # MAE показывает, на сколько в среднем модель ошибается
@@ -271,3 +272,28 @@ best_model.fit(X_train_r, y_train_r)
 best_pred = best_model.predict(X_test_r) 
 print("Первые 10 реальных значений:", np.round(y_test_r.values[:10], 4))
 print("Первые 10 предсказанных значений:", np.round(best_pred[:10], 4))
+'''
+
+knn_accuracy = []
+dt_accuracy = []
+for k in range(1,21):
+    knn = KNeighborsClassifier(n_neighbors=k)
+    dt = DecisionTreeClassifier(max_depth=k, random_state=35)
+    knn.fit(X_train, y_train)
+    dt.fit(X_train, y_train)
+    y_pred_knn = knn.predict(X_test)
+    y_pred_dt = dt.predict(X_test)
+    acc_knn = accuracy_score(y_test, y_pred_knn)
+    acc_dt = accuracy_score(y_test, y_pred_dt)
+    knn_accuracy.append(acc_knn)
+    dt_accuracy.append(acc_dt)
+
+res = pd.DataFrame({
+    "k": range(1, 21), 
+    "Accuracy_knn": knn_accuracy,
+    "max_depth": range(1,21),
+    "Accuracy_dt": dt_accuracy
+})
+
+print(res)
+
