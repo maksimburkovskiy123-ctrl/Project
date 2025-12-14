@@ -13,6 +13,13 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from sklearn import tree
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
 
 df = pd.read_csv("Spotify_final_dataset.csv")
 '''
@@ -273,7 +280,7 @@ best_pred = best_model.predict(X_test_r)
 print("Первые 10 реальных значений:", np.round(y_test_r.values[:10], 4))
 print("Первые 10 предсказанных значений:", np.round(best_pred[:10], 4))
 '''
-
+'''
 knn_accuracy = []
 dt_accuracy = []
 for k in range(1,21):
@@ -296,4 +303,116 @@ res = pd.DataFrame({
 })
 
 print(res) # k = 8 для knn, k = 4 для dt
+'''
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Что используем:", device)
 
+X = df_scaled[ft]
+y = df['Hit']
+X_train, X_temp, y_train, y_temp = train_test_split(
+    X, y, test_size=0.30, random_state=35
+)
+
+X_val, X_test, y_val, y_test = train_test_split(
+    X_temp, y_temp, test_size=0.50, random_state=35
+)
+print("Train class balance:")
+print(y_train.value_counts(normalize=True))
+
+print("\nValidation class balance:")
+print(y_val.value_counts(normalize=True))
+
+print("\nTest class balance:")
+print(y_test.value_counts(normalize=True))
+
+X_train_t = torch.tensor(X_train.values, dtype=torch.float32)
+y_train_t = torch.tensor(y_train.values, dtype=torch.long)
+
+X_val_t = torch.tensor(X_val.values, dtype=torch.float32)
+y_val_t = torch.tensor(y_val.values, dtype=torch.long)
+
+X_test_t = torch.tensor(X_test.values, dtype=torch.float32)
+y_test_t = torch.tensor(y_test.values, dtype=torch.long)
+
+train_loader = DataLoader(TensorDataset(X_train_t, y_train_t), batch_size=32, shuffle=True)
+val_loader   = DataLoader(TensorDataset(X_val_t, y_val_t), batch_size=32)
+test_loader  = DataLoader(TensorDataset(X_test_t, y_test_t), batch_size=32)
+
+class FCNN(nn.Module):
+    def __init__(self, input_dim):
+        super().__init__()
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, 128),
+            nn.ReLU(),
+            nn.Linear(128, 2)
+        )
+
+    def forward(self, x):
+        return self.model(x)
+
+model = FCNN(input_dim=X.shape[1]).to(device)
+
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+def evaluate(loader):
+    model.eval()
+    correct, total = 0, 0
+    with torch.no_grad():
+        for xb, yb in loader:
+            xb = xb.to(device)
+            yb = yb.to(device)
+            out = model(xb)
+            _, pred = torch.max(out, 1)
+            correct += (pred == yb).sum().item()
+            total += yb.size(0)
+    return correct / total
+
+epochs = 20
+
+for epoch in range(epochs):
+    model.train()
+    running_loss = 0.0
+
+    for xb, yb in train_loader:
+        xb = xb.to(device)
+        yb = yb.to(device)
+
+        optimizer.zero_grad()
+        out = model(xb)
+        loss = criterion(out, yb)
+        loss.backward()
+        optimizer.step()
+
+        running_loss += loss.item()
+
+    train_acc = evaluate(train_loader)
+    val_acc = evaluate(val_loader)
+    
+    print(f"Epoch {epoch+1}/{epochs} | "
+          f"Loss: {running_loss/len(train_loader):.4f} | "
+          f"Train Acc: {train_acc*100:.2f}% | "
+          f"Val Acc: {val_acc*100:.2f}%")
+    
+test_acc = evaluate(test_loader)
+
+print(f"Final Test Accuracy: {test_acc*100:.2f}%")
+
+model.eval()
+all_preds = []
+all_targets = []
+
+with torch.no_grad():
+    for xb, yb in test_loader:
+        xb = xb.to(device)
+        yb = yb.to(device)
+
+        out = model(xb)
+        _, pred = torch.max(out, 1)
+
+        all_preds.extend(pred.cpu().numpy())
+        all_targets.extend(yb.cpu().numpy())
+    
+print(classification_report(all_targets, all_preds))
