@@ -4,13 +4,15 @@ import numpy as np
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder, MinMaxScaler
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 
 from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn import tree
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
 
 df = pd.read_csv("Spotify_final_dataset.csv")
 '''
@@ -85,6 +87,8 @@ df['Hit'] = ((df['Peak Position'] <= 20) & (df['Top 10 (xTimes)'] > df['Top 10 (
 
 ft = ['Position', 'Days', 'Peak Position (xTimes)', 'Total Streams', 
       'Artist Name encoded', 'Peak Streams', 'Song Name encoded']
+
+'''
 target = df['Hit']
 base_model = LogisticRegression()
 
@@ -147,19 +151,20 @@ plt.title("Влияние предобработки на качество Logis
 plt.tight_layout()
 plt.savefig("Сравнение.png")
 plt.close()
-
-
-
-
-
-
-
-
 '''
+
+
+
+
+
+
+
+
 scaler = StandardScaler()
 df_scaled=df.copy()
 df_scaled[ft] = scaler.fit_transform(df[ft])
 
+'''
 fig, axs = plt.subplots(1, 2, figsize=(13, 7))
 axs[0].hist(df_scaled['Total Streams'], bins=50, color='pink', edgecolor='black', alpha =0.7)
 axs[0].set_title('Стандартизированная гистограмма для Total Streams')
@@ -224,3 +229,45 @@ print("Accuracy for logreg:", accuracy_logreg)
 print(confusion_matrix(y_test, y_pred_logreg))
 print(classification_report(y_test, y_pred_logreg))
 '''
+def regression_metrics(y_true, y_pred):  
+    mae = mean_absolute_error(y_true, y_pred)  # MAE показывает, на сколько в среднем модель ошибается
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred)) # RMSE в отличии от mae более чувствительна к большим ошибкам 
+    r2 = r2_score(y_true, y_pred) # R^2 показывает, насколько хорошо модель объясняет данные в дополнение к rmse
+    return mae, rmse, r2
+
+reg_target_col = 'Total Streams'
+ft_reg = [c for c in ft if c != reg_target_col]
+
+X_reg = df_scaled[ft_reg]
+y_reg = df_scaled[reg_target_col]
+
+X_train_r, X_test_r, y_train_r, y_test_r = train_test_split(X_reg, y_reg, test_size=0.2, random_state=35)
+reg_models = {
+    "LinearRegression": LinearRegression(),
+    "DecisionTreeRegressor": DecisionTreeRegressor(random_state=35),
+    "KNNRegressor (k=5)": KNeighborsRegressor(n_neighbors=5)
+}
+reg_results = []
+
+for name, model in reg_models.items():
+    model.fit(X_train_r, y_train_r)
+    pred = model.predict(X_test_r)
+
+    mae, rmse, r2 = regression_metrics(y_test_r, pred)
+
+    reg_results.append({
+        "Model": name,
+        "Target": reg_target_col,
+        "MAE": mae,
+        "RMSE": rmse,
+        "R2": r2
+    })
+    
+reg_results_df = pd.DataFrame(reg_results).sort_values(by="RMSE") # модель с меньшим RMSE делает меньше крупных ошибок, важно для прогноза популярности
+print(reg_results_df)
+best_model_name = reg_results_df.iloc[0]["Model"]
+best_model = reg_models[best_model_name]
+best_model.fit(X_train_r, y_train_r)
+best_pred = best_model.predict(X_test_r) 
+print("Первые 10 реальных значений:", np.round(y_test_r.values[:10], 4))
+print("Первые 10 предсказанных значений:", np.round(best_pred[:10], 4))
