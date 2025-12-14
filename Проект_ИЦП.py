@@ -1,25 +1,30 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import StandardScaler, LabelEncoder, MinMaxScaler
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
+
 from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn import tree
 
 df = pd.read_csv("Spotify_final_dataset.csv")
+'''
 # Проверка, что данные считались хорошо
 print(df.info)
 print(df.dtypes)
 print(df.columns.tolist())
 print(df.isna().sum()) # смотрим сколько пропусков, и где они находятся
+'''
+
 df = df.dropna() # удалили строчки, где есть пропуск   
-print(df.describe())
+#print(df.describe())
 
-
+'''
 # Диаграмма
 top_artist = df['Artist Name'].value_counts().head(14) # 14, а не 15, потому что 15 - гении маркетинга, но я их не признаю
 plt.figure(figsize=(11,7))
@@ -55,6 +60,7 @@ plt.boxplot(boxplot, labels=cr)
 plt.title('Boxplot для просмотра выбрасов')
 plt.tight_layout()
 plt.show()
+'''
 
 '''
 Можно заметить, что очень много выбросов. Выбросы - самые популярные треки, сами коробки - обычные треки.
@@ -75,8 +81,81 @@ df['Artist Name encoded'] = Encoder_artist.fit_transform(df['Artist Name'])
 df['Song Name encoded'] = Encoder_song.fit_transform(df['Song Name'])
 #Закодировали строки, чтобы sklearn мог работать дальше
 
+df['Hit'] = ((df['Peak Position'] <= 20) & (df['Top 10 (xTimes)'] > df['Top 10 (xTimes)'].median())).astype(int)
+
 ft = ['Position', 'Days', 'Peak Position (xTimes)', 'Total Streams', 
       'Artist Name encoded', 'Peak Streams', 'Song Name encoded']
+target = df['Hit']
+base_model = LogisticRegression()
+
+X_raw = df[ft]
+X_train, X_test, y_train, y_test = train_test_split(X_raw, target, test_size=0.2, random_state=35)
+base_model.fit(X_train, y_train)
+acc_raw = accuracy_score(y_test, base_model.predict(X_test))
+print("\n Accuracy сырых данных:", acc_raw)
+
+scaler_std = StandardScaler()
+X_std = scaler_std.fit_transform(df[ft])
+
+X_train, X_test, y_train, y_test = train_test_split(X_std, target, test_size=0.2, random_state=35)
+base_model.fit(X_train, y_train)
+acc_std = accuracy_score(y_test, base_model.predict(X_test))
+print("Accuracy StandardScaler:", acc_std)
+
+scaler_mm = MinMaxScaler()
+X_mm = scaler_mm.fit_transform(df[ft])
+X_train, X_test, y_train, y_test = train_test_split(X_mm, target, test_size=0.2, random_state=35)
+base_model.fit(X_train, y_train)
+acc_mm = accuracy_score(y_test, base_model.predict(X_test))
+print("Accuracy (MinMaxScaler):", acc_mm)
+
+df_clip = df.copy()
+for col in ['Total Streams', 'Peak Streams']:
+    q_low = df_clip[col].quantile(0.05)
+    q_high = df_clip[col].quantile(0.95)
+    df_clip[col] = df_clip[col].clip(q_low, q_high)
+
+X_clip = df_clip[ft]
+X_clip_std = StandardScaler().fit_transform(X_clip)
+X_train, X_test, y_train, y_test = train_test_split(X_clip_std, target, test_size=0.2, random_state=35)
+base_model.fit(X_train, y_train)
+acc_clip = accuracy_score(y_test, base_model.predict(X_test))
+print("Accuracy (Обрезка выбросов + StandardScaler):", acc_clip)
+
+df_log = df.copy()
+df_log['Total Streams'] = np.log1p(df_log['Total Streams'])
+df_log['Peak Streams'] = np.log1p(df_log['Peak Streams'])
+X_log = df_log[ft]
+X_log_std = StandardScaler().fit_transform(X_log)
+X_train, X_test, y_train, y_test = train_test_split(X_log_std, target, test_size=0.2, random_state=35)
+base_model.fit(X_train, y_train)
+acc_log = accuracy_score(y_test, base_model.predict(X_test))
+print("Accuracy (Log + StandardScaler):", acc_log)
+
+results_preprocessing = pd.DataFrame({
+      'Preprocessing': ['Сырые данные','StandardScaler','MinMaxScaler','Обрезание выбросов + StandardScaler','Log + StandardScaler'],
+      'Accuracy': [acc_raw, acc_std, acc_mm, acc_clip, acc_log]
+      })
+
+print(results_preprocessing)
+
+plt.figure(figsize=(10, 5))
+plt.bar(results_preprocessing['Preprocessing'], results_preprocessing['Accuracy'])
+plt.xticks(rotation=45, ha='right')
+plt.ylabel("Accuracy")
+plt.title("Влияние предобработки на качество Logistic Regression")
+plt.tight_layout()
+plt.savefig("Сравнение.png")
+plt.close()
+
+
+
+
+
+
+
+
+'''
 scaler = StandardScaler()
 df_scaled=df.copy()
 df_scaled[ft] = scaler.fit_transform(df[ft])
@@ -103,7 +182,7 @@ plt.tight_layout()
 plt.show()
 
 
-df['Hit'] = ((df['Peak Position'] <= 20) & (df['Top 10 (xTimes)'] > df['Top 10 (xTimes)'].median())).astype(int)
+
 # Столкнулся с проблемой accuracy 1.0. Понял, что у Hit это те же признаки, что и в модели обучения
 # После их удаления получил хороший accuracy
 x_scaled = df_scaled[ft]
@@ -144,3 +223,4 @@ print("Accuracy for logreg:", accuracy_logreg)
 
 print(confusion_matrix(y_test, y_pred_logreg))
 print(classification_report(y_test, y_pred_logreg))
+'''
