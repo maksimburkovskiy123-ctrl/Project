@@ -295,5 +295,5 @@ res = pd.DataFrame({
     "Accuracy_dt": dt_accuracy
 })
 
-print(res)
+print(res) # k = 8 для knn, k = 4 для dt
 
